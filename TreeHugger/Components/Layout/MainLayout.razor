@@ -1,0 +1,150 @@
+﻿@inherits LayoutComponentBase
+@implements IDisposable
+@using Microsoft.AspNetCore.Antiforgery;
+@inject NavigationManager NavigationManager
+@inject IAntiforgery Antiforgery
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<IdentityUser> SignInManager
+@inject IHttpContextAccessor HttpContextAccessor
+
+<MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="TreeHuggerTheme" />
+<MudPopoverProvider/>
+<MudDialogProvider/>
+<MudSnackbarProvider/>
+<MudLayout>
+    <MudAppBar>
+        @*<MudIconButton Icon="@Icons.Material.Rounded.Menu" Color="Color.Warning" Edge="Edge.Start" OnClick="@DrawerToggle" />*@
+        <a href="/">
+            <MudImage Src="icons/favicon.ico" Height="85" Class="rounded-lg" />
+        </a>
+        <MudSpacer />
+        <AuthorizeView>
+            <Authorized>
+                <MudMenu>
+                    <ActivatorContent>
+                        <MudAvatar />
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem>
+                            <form action="Account/Logout" method="post">
+                                <input type="hidden" name="__RequestVerificationToken" value="@AntiforgeryToken" />
+                                <input type="hidden" name="ReturnUrl" value="@currentUrl" />
+                                <button type="submit" class="mud-nav-link mud-ripple">
+                                    <MudIcon Icon="@Icons.Material.Rounded.Logout" Color="Color.Secondary" Class="mr-3"></MudIcon> Logout
+                                </button>
+                            </form>
+                        </MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            </Authorized>
+            <NotAuthorized>
+                <MudMenu>
+                    <ActivatorContent>
+                        <MudAvatar>
+                            <MudImage Src="icons/pop-robot.ico" Class="rounded-lg" />
+                        </MudAvatar>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Href="Account/Login" Icon="@Icons.Material.Rounded.Login" IconColor="Color.Primary">
+                            LogIn
+                        </MudMenuItem>
+                        <MudMenuItem Href="Account/Register" Icon="@Icons.Material.Rounded.PersonAdd" IconColor="Color.Secondary">
+                            Register
+                        </MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            </NotAuthorized>
+        </AuthorizeView>
+    </MudAppBar>
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Variant="@DrawerVariant.Mini" OpenMiniOnHover="true">
+        <MudNavMenu>
+            <AuthorizeView>
+                <Authorized>
+                    <MudNavGroup>
+                        <MudNavLink Href="Account/Manage" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Person">Profile</MudNavLink>
+                        <MudNavLink Href="Account/Manage/Email" Icon="@Icons.Material.Filled.Email">Email</MudNavLink>
+                        <MudNavLink Href="Account/Manage/ChangePassword" Icon="@Icons.Material.Filled.Lock">Password</MudNavLink>
+                        @if (hasExternalLogins)
+                        {
+                            <MudNavLink Href="Account/Manage/ExternalLogins" Icon="@Icons.Material.Filled.PhoneLocked">External logins</MudNavLink>
+                        }
+                        <MudNavLink Href="Account/Manage/TwoFactorAuthentication" Icon="@Icons.Material.Filled.LockClock">Two-factor authentication</MudNavLink>
+                        <MudNavLink Href="Account/Manage/PersonalData" Icon="@Icons.Material.Filled.PersonRemove">Personal data</MudNavLink>
+                    </MudNavGroup>
+                    @*<form action="Account/Logout" method="post">
+                        <AntiforgeryToken/>
+                        <input type="hidden" name="ReturnUrl" value="@currentUrl"/>
+                        <button type="submit" class="mud-nav-link mud-ripple">
+                            <MudIcon Icon="@Icons.Material.Filled.Logout" Color="Color.Secondary" Class="mr-3"></MudIcon> Logout
+                        </button>
+                    </form>*@
+                </Authorized>
+                <NotAuthorized>
+                    <MudNavLink Href="Account/Login" Icon="@Icons.Material.Filled.Password" IconColor="Color.Primary">Login</MudNavLink>
+                    <MudNavLink Href="Account/Register" Icon="@Icons.Material.Filled.Person" IconColor="Color.Secondary">Register</MudNavLink>
+                </NotAuthorized>
+            </AuthorizeView>
+        </MudNavMenu>
+    </MudDrawer>
+    
+    <MudMainContent Class="mt-16 pa-4">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
+</div>
+
+@code {
+    private bool hasExternalLogins;
+    private bool _drawerOpen = false;
+    private string? currentUrl;
+    private bool _isDarkMode = true;
+    private string AntiforgeryToken => Antiforgery.GetAndStoreTokens(HttpContextAccessor.HttpContext).RequestToken;
+
+    private void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+    
+    protected override void OnInitialized()
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+    MudTheme TreeHuggerTheme = new MudTheme()
+    {
+        PaletteDark = new PaletteDark()
+        {
+            AppbarBackground = "#353535",
+            AppbarText = Colors.Gray.Lighten5,
+            Background = "#000000",
+            DrawerBackground = "#353535",
+            DrawerIcon = Colors.Cyan.Default,
+            DrawerText = Colors.Gray.Lighten5,
+            Primary = Colors.Cyan.Default,
+            Secondary = Colors.Amber.Default,
+            TextPrimary = Colors.Gray.Lighten5
+        },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        hasExternalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync()).Any();
+    }
+}

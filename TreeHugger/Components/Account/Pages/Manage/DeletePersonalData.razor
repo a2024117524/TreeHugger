@@ -1,0 +1,88 @@
+﻿@page "/Account/Manage/DeletePersonalData"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+
+@inject UserManager<IdentityUser> UserManager
+@inject SignInManager<IdentityUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+
+<MudContainer Style="background-color: #353535">
+    <br/>
+    <PageTitle>Delete Personal Data</PageTitle>
+    <MudText Typo="Typo.h3" GutterBottom="true">Delete personal data</MudText>
+    <MudDivider/>
+    <br/>
+    <StatusMessage Message="@message"/>
+    <br/>
+    <MudAlert Severity="Severity.Error" Variant="Variant.Text">
+        Deleting this data will permanently remove your account, and this cannot be recovered.
+    </MudAlert>
+    <br/>
+    <EditForm Model="Input" FormName="delete-user" OnValidSubmit="OnValidSubmitAsync" method="post">
+        <DataAnnotationsValidator/>
+        <MudGrid>
+            @if (requirePassword)
+            {
+                <MudItem md="12">
+                    <MudStaticTextField For="@(() => Input.Password)" @bind-Value="Input.Password" InputType="InputType.Password" Label="Password"
+                                        UserAttributes="@(new() { { "autocomplete", "current-password" }, { "aria-required", "true" } })"
+                                        Variant="Variant.Outlined"/>
+                </MudItem>
+            }
+            <MudItem md="12">
+                <MudStaticButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" FormAction="FormAction.Submit">Delete data and close my account</MudStaticButton>
+            </MudItem>
+        </MudGrid>
+    </EditForm>
+    <br/>
+</MudContainer>
+
+<style>
+    .mud-input-label {
+        background-color: #353535;
+    }
+</style>
+
+@code {
+    private string? message;
+    private IdentityUser user = default!;
+    private bool requirePassword;
+
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm] private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext);
+        requirePassword = await UserManager.HasPasswordAsync(user);
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        if (requirePassword && !await UserManager.CheckPasswordAsync(user, Input.Password))
+        {
+            message = "Error: Incorrect password.";
+            return;
+        }
+
+        var result = await UserManager.DeleteAsync(user);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException("Unexpected error occurred deleting user.");
+        }
+
+        await SignInManager.SignOutAsync();
+        var userId = await UserManager.GetUserIdAsync(user);
+        RedirectManager.RedirectToCurrentPage();
+    }
+
+    private sealed class InputModel
+    {
+        [DataType(DataType.Password)] public string Password { get; set; } = "";
+    }
+
+}

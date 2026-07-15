@@ -1,0 +1,173 @@
+﻿@page "/Account/Register"
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+
+@inject UserManager<IdentityUser> UserManager
+@inject IUserStore<IdentityUser> UserStore
+@inject SignInManager<IdentityUser> SignInManager
+@inject IEmailSender<IdentityUser> EmailSender
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+
+<MudContainer Style="background-color: #353535">
+    <br/>
+    <PageTitle>Register</PageTitle>
+    <MudText Typo="Typo.h3" GutterBottom="true">Create a new account.</MudText>
+    <MudDivider/>
+    <br/>
+    <MudGrid>
+        <MudItem md="6">
+            <StatusMessage Message="@Message"/>
+            <br/>
+            <EditForm Model="Input" asp-route-returnUrl="@ReturnUrl" method="post" OnValidSubmit="RegisterUser" FormName="register">
+                <DataAnnotationsValidator/>
+                <MudGrid>
+                    <MudItem md="12">
+                        <MudStaticTextField For="@(() => Input.Username)" @bind-Value="Input.Username" Label="Username"
+                                            UserAttributes="@(new() { { "autocomplete", "true" }, { "aria-required", "true" } })"
+                                            Variant="Variant.Outlined"/>
+                    </MudItem>
+                    <MudItem md="12">
+                        <MudStaticTextField For="@(() => Input.Email)" @bind-Value="Input.Email" Label="Email"
+                                            UserAttributes="@(new() { { "autocomplete", "true" }, { "aria-required", "true" } })"
+                                            Variant="Variant.Outlined"/>
+                    </MudItem>
+                    <MudItem md="12">
+                        <MudStaticTextField For="@(() => Input.Password)" @bind-Value="Input.Password" Label="Password" InputType="InputType.Password"
+                                            UserAttributes="@(new() { { "autocomplete", "new-password" }, { "aria-required", "true" } })"
+                                            Variant="Variant.Outlined"/>
+                    </MudItem>
+                    <MudItem md="12">
+                        <MudStaticTextField For="@(() => Input.ConfirmPassword)" @bind-Value="Input.ConfirmPassword" Label="Confirm Password" InputType="InputType.Password"
+                                            UserAttributes="@(new() { { "autocomplete", "new-password" }, { "aria-required", "true" } })"
+                                            Variant="Variant.Outlined"/>
+                    </MudItem>
+                    <MudItem md="12">
+                        <MudStaticSwitch For="@(() => Input.Educator)" @bind-Value="Input.Educator" Label="Educator" Color="Color.Secondary"/>
+                    </MudItem>
+                    <MudItem md="12">
+                        <MudFab Color="Color.Primary" Label="Sign Up" ButtonType="ButtonType.Submit"/>
+                    </MudItem>
+                </MudGrid>
+            </EditForm>
+        </MudItem>
+        <MudItem md="6">
+            <br/>
+            <MudText Typo="Typo.body1" GutterBottom="true">Use another service to register.</MudText>
+            <ExternalLoginPicker/>
+        </MudItem>
+    </MudGrid>
+    <br/>
+</MudContainer>
+
+<style>
+    .mud-input-label {
+        background-color: #353535;
+    }
+</style>
+
+@code {
+    private IEnumerable<IdentityError>? identityErrors;
+
+    [SupplyParameterFromForm] private InputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+
+    private string? Message => identityErrors is null ? null : $"Error: {string.Join(", ", identityErrors.Select(error => error.Description))}";
+
+    public async Task RegisterUser(EditContext editContext)
+    {
+        var user = CreateUser();
+
+        await UserStore.SetUserNameAsync(user, Input.Username, CancellationToken.None);
+        var emailStore = GetEmailStore();
+        await emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
+        var result = await UserManager.CreateAsync(user, Input.Password);
+
+        if (!result.Succeeded)
+        {
+            identityErrors = result.Errors;
+            return;
+        }
+
+        string role = Input.Educator ? "Educator" : "Student";
+        var roleResult = await UserManager.AddToRoleAsync(user, role);
+        
+        if (!roleResult.Succeeded)
+        {
+            identityErrors = roleResult.Errors;
+            return;
+        }
+
+        var userId = await UserManager.GetUserIdAsync(user);
+        var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+        var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+            NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+            new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
+
+        await EmailSender.SendConfirmationLinkAsync(user, Input.Email, HtmlEncoder.Default.Encode(callbackUrl));
+
+        if (UserManager.Options.SignIn.RequireConfirmedAccount)
+        {
+            RedirectManager.RedirectTo(
+                "Account/RegisterConfirmation",
+                new() { ["email"] = Input.Email, ["returnUrl"] = ReturnUrl });
+        }
+
+        await SignInManager.SignInAsync(user, isPersistent: false);
+        RedirectManager.RedirectTo(ReturnUrl);
+    }
+
+    private IdentityUser CreateUser()
+    {
+        try
+        {
+            return Activator.CreateInstance<IdentityUser>();
+        }
+        catch
+        {
+            throw new InvalidOperationException($"Can't create an instance of '{nameof(IdentityUser)}'. " +
+                                                $"Ensure that '{nameof(IdentityUser)}' is not an abstract class and has a parameterless constructor.");
+        }
+    }
+
+    private IUserEmailStore<IdentityUser> GetEmailStore()
+    {
+        if (!UserManager.SupportsUserEmail)
+        {
+            throw new NotSupportedException("The default UI requires a user store with email support.");
+        }
+
+        return (IUserEmailStore<IdentityUser>)UserStore;
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [Display(Name = "Username")]
+        public string Username { get; set; } = "";
+        
+        [Required]
+        [EmailAddress]
+        [Display(Name = "Email")]
+        public string Email { get; set; } = "";
+
+        [Required]
+        [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+        [DataType(DataType.Password)]
+        [Display(Name = "Password")]
+        public string Password { get; set; } = "";
+
+        [DataType(DataType.Password)]
+        [Display(Name = "Confirm password")]
+        [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
+        public string ConfirmPassword { get; set; } = "";
+        
+        public bool Educator { get; set; } = false;
+    }
+}

@@ -1,0 +1,57 @@
+﻿@page "/Account/ConfirmEmailChange"
+
+@using System.Text
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+
+@inject UserManager<IdentityUser> UserManager
+@inject SignInManager<IdentityUser> SignInManager
+@inject IdentityRedirectManager RedirectManager
+
+<MudContainer Style="background-color: #353535">
+    <br/>
+    <PageTitle>Confirm email change</PageTitle>
+    <MudText Typo="Typo.h3" GutterBottom="true">Confirm new email.</MudText>
+    <MudDivider/>
+    <br/>
+    <StatusMessage Message="@message"/>
+    <br/>
+</MudContainer>
+
+@code {
+    private string? message;
+
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery] private string? UserId { get; set; }
+
+    [SupplyParameterFromQuery] private string? Email { get; set; }
+
+    [SupplyParameterFromQuery] private string? Code { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (UserId is null || Email is null || Code is null)
+        {
+            RedirectManager.RedirectToWithStatus(
+                "Account/Login", "Error: Invalid email change confirmation link.", HttpContext);
+        }
+
+        var user = await UserManager.FindByIdAsync(UserId);
+        if (user is null)
+        {
+            message = "Unable to find user with Id '{userId}'";
+            return;
+        }
+
+        var code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
+        var result = await UserManager.ChangeEmailAsync(user, Email, code);
+        if (!result.Succeeded)
+        {
+            message = "Error changing email.";
+            return;
+        }
+        await SignInManager.RefreshSignInAsync(user);
+        message = "Thank you for confirming your email change.";
+    }
+}

@@ -1,0 +1,84 @@
+﻿@page "/Account/Manage"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+
+@inject UserManager<IdentityUser> UserManager
+@inject SignInManager<IdentityUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+
+
+<MudContainer Style="background-color: #353535">
+    <br/>
+    <PageTitle>Profile</PageTitle>
+    <MudText Typo="Typo.h3" GutterBottom="true">Manage your account preferences.</MudText>
+    <MudDivider/>
+    <br/>
+    <StatusMessage/>
+    <br/>
+    <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post">
+        <DataAnnotationsValidator/>
+        <MudGrid>
+            <MudItem md="12">
+                <MudStaticTextField Value="@username" Label="Username" Disabled="true" Variant="Variant.Outlined"/>
+            </MudItem>
+            <MudItem md="12">
+                <MudStaticTextField For="@(() => Input.PhoneNumber)" @bind-Value="Input.PhoneNumber" Label="Phone Number"
+                                    UserAttributes="@(new() { { "autocomplete", "tel-national" } })"
+                                    Variant="Variant.Outlined"/>
+            </MudItem>
+            <MudItem md="12">
+                <MudFab Color="Color.Primary" Label="Save" ButtonType="ButtonType.Submit"/>
+            </MudItem>
+        </MudGrid>
+    </EditForm>
+    <br/>
+</MudContainer>
+
+<style>
+    .mud-input-label {
+        background-color: #353535;
+    }
+</style>
+
+@code {
+    private IdentityUser user = default!;
+    private string? username;
+    private string? phoneNumber;
+
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm] private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext);
+        username = await UserManager.GetUserNameAsync(user);
+        phoneNumber = await UserManager.GetPhoneNumberAsync(user);
+
+        Input.PhoneNumber ??= phoneNumber;
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        if (Input.PhoneNumber != phoneNumber)
+        {
+            var setPhoneResult = await UserManager.SetPhoneNumberAsync(user, Input.PhoneNumber);
+            if (!setPhoneResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to set phone number.", HttpContext);
+            }
+        }
+
+        await SignInManager.RefreshSignInAsync(user);
+        RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated", HttpContext);
+    }
+
+    private sealed class InputModel
+    {
+        [Phone]
+        [Display(Name = "Phone number")]
+        public string? PhoneNumber { get; set; }
+    }
+}
